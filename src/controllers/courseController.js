@@ -2,7 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../models');
 const {
   Course, Category, SubCategory, CourseDifficulty,
-  CourseLearn, CourseRequirement, CourseSection, CourseLecture
+  CourseLearn, CourseRequirement, CourseSection, CourseLecture,
+  CourseMetric, CourseReview
 } = db;
 
 // ─── Create Course ───────────────────────────────────────────────────────────
@@ -22,7 +23,10 @@ exports.createCourse = async (req, res) => {
       difficultyId,
       learningPoints,   // Array of strings
       requirements,     // Array of strings
-      sections          // Array of { title, lectures: [{ title, videoUrl, duration, isPreview }] }
+      sections,         // Array of { title, lectures: [{ title, videoUrl, duration, isPreview }] }
+      language,         // Array of strings
+      subtitles,        // Array of strings
+      banner            // String
     } = req.body;
 
     // ── Validate required fields ──
@@ -61,6 +65,9 @@ exports.createCourse = async (req, res) => {
       categoryId: category.id,
       subCategoryId,
       difficultyId: difficultyId || null,
+      language: language || [],
+      subtitles: subtitles || [],
+      banner: banner || '',
       activeInd: true
     }, { transaction });
 
@@ -254,6 +261,149 @@ exports.getCourseByToken = async (req, res) => {
     res.status(200).json({
       status: 'success',
       data: course
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// ─── Get Course Details ──────────────────────────────────────────────────────
+exports.getCourseDetails = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const course = await Course.findOne({
+      where: { coursetoken: token },
+      include: [
+        { model: Category, as: 'category', attributes: ['name'] },
+        { model: SubCategory, as: 'subCategory', attributes: ['name'] },
+        { model: CourseDifficulty, as: 'difficulty', attributes: ['name'] },
+        { model: CourseLearn, as: 'learningPoints', attributes: ['items'] },
+        { model: CourseRequirement, as: 'requirements', attributes: ['items'] },
+        { model: CourseMetric, as: 'metrics' },
+        {
+          model: CourseSection,
+          as: 'sections',
+          separate: true,
+          order: [['order', 'ASC']],
+          include: [
+            {
+              model: CourseLecture,
+              as: 'lectures',
+              separate: true,
+              order: [['order', 'ASC']]
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!course) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Course not found'
+      });
+    }
+
+    const plain = course.get({ plain: true });
+
+    // Format the response as requested
+    const responseData = {
+      categoryName: plain.category ? plain.category.name : null,
+      subcategoryName: plain.subCategory ? plain.subCategory.name : null,
+      courseName: plain.courseName,
+      description: plain.description,
+      briefDescription: plain.briefDescription,
+      rating: plain.metrics ? parseFloat(plain.metrics.ratingAverage).toFixed(1) : "0.0",
+      reviewCount: plain.metrics ? parseInt(plain.metrics.reviewCount) : 0,
+      instructorName: plain.instructorName,
+      subtitles: plain.subtitles || [],
+      language: plain.language || [],
+      banner: plain.banner,
+      sections: plain.sections.map(s => ({
+        title: s.title,
+        lectures: s.lectures.map(l => ({
+          title: l.title,
+          duration: l.duration,
+          isPreview: l.isPreview
+        }))
+      })),
+      learningPoints: plain.learningPoints ? plain.learningPoints.items : [],
+      requirements: plain.requirements ? plain.requirements.items : []
+    };
+
+    return res.status(200).json({
+      status: 'success',
+      data: responseData
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// ─── Get Course Reviews ──────────────────────────────────────────────────────
+exports.getCourseReviews = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const course = await Course.findOne({
+      where: { coursetoken: token },
+      attributes: ['id']
+    });
+
+    if (!course) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Course not found'
+      });
+    }
+
+    // Fetch reviews with user info
+    const reviews = await db.CourseReview.findAll({
+      where: { courseId: course.id, activeInd: true },
+      include: [
+        {
+          model: db.User,
+          as: 'user',
+          attributes: ['fullName']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Calculate distribution
+    const totalReviews = reviews.length;
+    const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    let sumRating = 0;
+
+    reviews.forEach(r => {
+      distribution[r.rating] = (distribution[r.rating] || 0) + 1;
+      sumRating += r.rating;
+    });
+
+    const averageRating = totalReviews > 0 ? (sumRating / totalReviews).toFixed(1) : "0.0";
+
+    const responseData = {
+      averageRating,
+      totalReviews,
+      ratingDistribution: distribution,
+      reviews: reviews.map(r => ({
+        userName: r.user ? r.user.fullName : 'Anonymous',
+        rating: r.rating,
+        reviewMessage: r.reviewText,
+        commentedDate: r.createdAt
+      }))
+    };
+
+    return res.status(200).json({
+      status: 'success',
+      data: responseData
     });
   } catch (error) {
     res.status(500).json({

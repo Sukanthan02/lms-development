@@ -75,6 +75,21 @@ module.exports = (sequelize, DataTypes) => {
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'
+      },
+      language: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Standard languages for the course (Array of strings)'
+      },
+      subtitles: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Subtitle languages available (Array of strings)'
+      },
+      banner: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: 'Banner image filename or URL'
       }
     },
     {

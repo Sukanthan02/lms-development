@@ -13,6 +13,10 @@ router.get('/home/popular', courseController.getPopularCourses);
 router.get('/home/new', courseController.getNewCourses);
 router.get('/home/advanced', courseController.getAdvancedCourses);
 
+// Detailed routes
+router.get('/details/:token', courseController.getCourseDetails);
+router.get('/reviews/:token', courseController.getCourseReviews);
+
 // GET /api/courses/:token
 router.get('/:token', courseController.getCourseByToken);
 
