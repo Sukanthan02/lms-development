@@ -311,22 +311,45 @@ exports.getCourseDetails = async (req, res) => {
     const plain = course.get({ plain: true });
 
     // Format the response as requested
+    // Calculate pricing
+    const coursePrice = parseFloat(plain.price) || 0;
+    const discount = parseFloat(plain.discount) || 0;
+    const originalPrice = discount > 0 ? coursePrice / (1 - discount / 100) : coursePrice;
+
+    // Find the first preview lecture's videoUrl
+    let previewVideoUrl = '';
+    for (const section of plain.sections) {
+      for (const lecture of section.lectures) {
+        if (lecture.isPreview && lecture.videoUrl) {
+          previewVideoUrl = lecture.videoUrl;
+          break;
+        }
+      }
+      if (previewVideoUrl) break;
+    }
+
     const responseData = {
       categoryName: plain.category ? plain.category.name : null,
       subcategoryName: plain.subCategory ? plain.subCategory.name : null,
       courseName: plain.courseName,
       description: plain.description,
       briefDescription: plain.briefDescription,
+      price: coursePrice,
+      originalPrice: parseFloat(originalPrice.toFixed(2)),
+      discount: discount,
+      bestSeller: false, // Can be enhanced later with actual logic
       rating: plain.metrics ? parseFloat(plain.metrics.ratingAverage).toFixed(1) : "0.0",
       reviewCount: plain.metrics ? parseInt(plain.metrics.reviewCount) : 0,
       instructorName: plain.instructorName,
       subtitles: plain.subtitles || [],
       language: plain.language || [],
       banner: plain.banner,
+      previewVideoUrl,
       sections: plain.sections.map(s => ({
         title: s.title,
         lectures: s.lectures.map(l => ({
           title: l.title,
+          videoUrl: l.videoUrl || '',
           duration: l.duration,
           isPreview: l.isPreview
         }))
